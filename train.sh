@@ -18,7 +18,6 @@ python -u train.py -s data/ref_nerf/ref_real/gardenspheres --eval --iterations 6
 python -u train.py -s data/ref_nerf/ref_real/sedan --eval --iterations 61000 --longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.032 0.808 0.751 --env_scope_radius 2.138
 python -u train.py -s data/ref_nerf/ref_real/toycar --eval --iterations 61000  --longer_prop_iter 36_000 --use_env_scope --env_scope_center 0.6810 0.8080 4.4550 --env_scope_radius 2.707
 
-
 python -u train.py -s data/nerf_synthetic/lego --eval --iterations 61000 --white_background --densification_interval_when_prop 100
 python -u train.py -s data/nerf_synthetic/drums --eval --iterations 61000 --white_background --densification_interval_when_prop 100
 python -u train.py -s data/nerf_synthetic/ship --eval --iterations 61000 --white_background --densification_interval_when_prop 100

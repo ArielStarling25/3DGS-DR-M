@@ -20,7 +20,7 @@ Abstract: *The advent of neural and Gaussian-based radiance field methods have a
 </section>
 
 ## Installation
-First, please follow the setup tutorial of vanilla [3DGS](https://github.com/graphdeco-inria/gaussian-splatting), and ensure you can run their code. Then, install the following submodules to run our code.
+<!-- First, please follow the setup tutorial of vanilla [3DGS](https://github.com/graphdeco-inria/gaussian-splatting), and ensure you can run their code. Then, install the following submodules to run our code.
 
 ```
 pip install submodules/cubemapencoder
@@ -28,7 +28,64 @@ pip install submodules/diff-gaussian-rasterization_c3
 pip install submodules/diff-gaussian-rasterization_c7
 pip install submodules/simple-knn
 ```
-`diff-gaussian-rasterization_c3` and `simple-knn` are identical to the vanilla 3DGS. You can skip them if you have installed them. You just need to replace `diff-gaussian-rasterization_c3` with `diff-gaussian-rasterization` if you have installed it.
+`diff-gaussian-rasterization_c3` and `simple-knn` are identical to the vanilla 3DGS. You can skip them if you have installed them. You just need to replace `diff-gaussian-rasterization_c3` with `diff-gaussian-rasterization` if you have installed it. -->
+
+```bash
+# Note: Using a WSL Subsystem on Windows
+# -  Distributor ID: Ubuntu
+# -  Description:    Ubuntu 22.04.5 LTS
+# -  Release:        22.04
+# -  Codename:       jammy
+
+# Clone the repo
+git clone https://github.com/ArielStarling25/3DGS-DR-M.git --recursive
+cd 3DGS-DR-M
+
+# Using GCC-10 natively to avoid C++ standard library clashing with CUDA 11.7
+sudo apt-get update
+sudo apt-get install gcc-10 g++-10 build-essential -y
+
+conda create -n 3dgs-dr python=3.8 -y
+conda activate 3dgs-dr
+
+# Create and activate conda environment
+conda install -c nvidia/label/cuda-11.7.1 cuda-toolkit -y
+conda install -c conda-forge cmake gmp cgal ninja eigen -y
+
+export CC=gcc-10
+export CXX=g++-10
+export CUDA_HOME=$CONDA_PREFIX
+export PATH=$CONDA_PREFIX/bin:$PATH
+export CUDACXX=$CONDA_PREFIX/bin/nvcc
+export CPATH=$CONDA_PREFIX/include:$CONDA_PREFIX/include/eigen3:$CONDA_PREFIX/targets/x86_64-linux/include:$CPATH
+export LIBRARY_PATH=$CONDA_PREFIX/lib:$CONDA_PREFIX/lib64:$CONDA_PREFIX/lib/stubs:$LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$CONDA_PREFIX/lib:$CONDA_PREFIX/lib64:$LD_LIBRARY_PATH
+export LDFLAGS="-L$CONDA_PREFIX/lib -L$CONDA_PREFIX/lib64 -L$CONDA_PREFIX/lib/stubs -L/usr/lib/wsl/lib"
+
+# Install pytorch (Force CUDA 11.7 wheels)
+pip install torch==2.0.0 torchvision==0.15.0 torchaudio==2.0.0 --index-url https://download.pytorch.org/whl/cu117
+
+# Install submodules
+pip install submodules/cubemapencoder --no-build-isolation --no-cache-dir
+pip install submodules/diff-gaussian-rasterization_c3 --no-build-isolation --no-cache-dir
+pip install submodules/diff-gaussian-rasterization_c7 --no-build-isolation --no-cache-dir
+pip install submodules/simple-knn --no-build-isolation --no-cache-dir
+
+# Installing tetra-nerf subomodule for triangulation
+cd submodules/tetra-triangulation
+cmake . \
+    -DCMAKE_C_COMPILER=gcc-10 \
+    -DCMAKE_CXX_COMPILER=g++-10 \
+    -DCMAKE_CUDA_HOST_COMPILER=g++-10 \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DCMAKE_PREFIX_PATH=$CONDA_PREFIX
+make 
+pip install -e . --no-build-isolation --no-cache-dir
+
+# Install other dependencies
+cd ../..
+pip install -r requirements.txt
+```
 
 ## Datasets
 We mainly test our method on [Shiny Blender Synthetic](https://storage.googleapis.com/gresearch/refraw360/ref.zip), [Shiny Blender Real](https://storage.googleapis.com/gresearch/refraw360/ref_real.zip), [Glossy Synthetic](https://liuyuan-pal.github.io/NeRO/) and [NeRF Synthetic dataset](https://drive.google.com/drive/folders/128yBriW1IG_3NJ5Rp7APSTZsJqdJdfc1). Please run the script `nero2blender.py` to convert the format of the Glossy Synthetic dataset.

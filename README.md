@@ -20,15 +20,6 @@ Abstract: *The advent of neural and Gaussian-based radiance field methods have a
 </section>
 
 ## Installation
-<!-- First, please follow the setup tutorial of vanilla [3DGS](https://github.com/graphdeco-inria/gaussian-splatting), and ensure you can run their code. Then, install the following submodules to run our code.
-
-```
-pip install submodules/cubemapencoder
-pip install submodules/diff-gaussian-rasterization_c3
-pip install submodules/diff-gaussian-rasterization_c7
-pip install submodules/simple-knn
-```
-`diff-gaussian-rasterization_c3` and `simple-knn` are identical to the vanilla 3DGS. You can skip them if you have installed them. You just need to replace `diff-gaussian-rasterization_c3` with `diff-gaussian-rasterization` if you have installed it. -->
 
 ```bash
 # Note: Using a WSL Subsystem on Windows

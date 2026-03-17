@@ -19,7 +19,7 @@ Abstract: *The advent of neural and Gaussian-based radiance field methods have a
   </div>
 </section>
 
-## Installation
+## Installation (Tested with 40-series card)
 
 ```bash
 # Note: Using a WSL Subsystem on Windows
@@ -27,6 +27,7 @@ Abstract: *The advent of neural and Gaussian-based radiance field methods have a
 # -  Description:    Ubuntu 22.04.5 LTS
 # -  Release:        22.04
 # -  Codename:       jammy
+# -  GPU Tested:     RTX 4060
 
 # Clone the repo
 git clone https://github.com/ArielStarling25/3DGS-DR-M.git --recursive
@@ -70,6 +71,80 @@ cmake . \
     -DCMAKE_CUDA_HOST_COMPILER=g++-10 \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCMAKE_PREFIX_PATH=$CONDA_PREFIX
+make 
+pip install -e . --no-build-isolation --no-cache-dir
+
+# Install other dependencies
+cd ../..
+pip install -r requirements.txt
+```
+
+## Installation (Tested with 50-series card)
+
+```bash
+# Note: Using a WSL Subsystem on Windows
+# -  Distributor ID: Ubuntu
+# -  Description:    Ubuntu 22.04.5 LTS
+# -  Release:        22.04
+# -  Codename:       jammy
+# -  GPU Tested:     RTX 5070 Ti
+
+# Clone the repo
+git clone https://github.com/ArielStarling25/3DGS-DR-M.git --recursive
+cd 3DGS-DR-M
+
+# Using GCC-11 natively for CUDA 12.8 compatibility
+sudo apt-get update
+sudo apt-get install gcc-11 g++-11 build-essential -y
+
+# Python 3.10 (PyTorch 2.7+ no longer supports Python 3.8)
+conda create -n 3dgs-dr python=3.10 -y
+conda activate 3dgs-dr
+
+# Install CUDA Toolkit 12.8.0 for Blackwell (sm_120) support
+conda install -c conda-forge gdb -y
+conda install -c nvidia/label/cuda-12.8.0 cuda-toolkit -y
+conda install -c conda-forge cmake gmp cgal ninja eigen -y
+
+# Export compiler versions
+export CC=gcc-11
+export CXX=g++-11
+export CUDA_HOME=$CONDA_PREFIX
+export PATH=$CONDA_PREFIX/bin:$PATH
+export CUDACXX=$CONDA_PREFIX/bin/nvcc
+export CPATH=$CONDA_PREFIX/include:$CONDA_PREFIX/include/eigen3:$CONDA_PREFIX/targets/x86_64-linux/include:$CPATH
+export LIBRARY_PATH=$CONDA_PREFIX/lib:$CONDA_PREFIX/lib64:$CONDA_PREFIX/lib/stubs:$LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$CONDA_PREFIX/lib:$CONDA_PREFIX/lib64:$LD_LIBRARY_PATH
+export LDFLAGS="-L$CONDA_PREFIX/lib -L$CONDA_PREFIX/lib64 -L$CONDA_PREFIX/lib/stubs -L/usr/lib/wsl/lib"
+
+# UPGRADE: Install PyTorch 2.7.1 with cu128 wheels
+pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128
+
+# Remove previous builds if existent
+rm -rf submodules/cubemapencoder/build submodules/cubemapencoder/*.egg-info
+rm -rf submodules/diff-gaussian-rasterization_c3/build submodules/diff-gaussian-rasterization_c3/*.egg-info
+rm -rf submodules/diff-gaussian-rasterization_c7/build submodules/diff-gaussian-rasterization_c7/*.egg-info
+rm -rf submodules/simple-knn/build submodules/simple-knn/*.egg-info
+
+cd submodules/tetra-triangulation
+rm -rf build CMakeCache.txt CMakeFiles Makefile cmake_install.cmake *.egg-info
+cd ../..
+
+# Install submodules
+pip install submodules/cubemapencoder --no-build-isolation --no-cache-dir
+pip install submodules/diff-gaussian-rasterization_c3 --no-build-isolation --no-cache-dir
+pip install submodules/diff-gaussian-rasterization_c7 --no-build-isolation --no-cache-dir
+pip install submodules/simple-knn --no-build-isolation --no-cache-dir
+
+# Installing tetra-nerf submodule for triangulation
+cd submodules/tetra-triangulation
+cmake . \
+    -DCMAKE_C_COMPILER=gcc-11 \
+    -DCMAKE_CXX_COMPILER=g++-11 \
+    -DCMAKE_CUDA_HOST_COMPILER=g++-11 \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DCMAKE_PREFIX_PATH=$CONDA_PREFIX \
+    -DCMAKE_CXX_FLAGS="-D_GLIBCXX_USE_CXX11_ABI=0"
 make 
 pip install -e . --no-build-isolation --no-cache-dir
 

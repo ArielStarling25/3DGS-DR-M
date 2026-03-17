@@ -1,4 +1,5 @@
-import os
+import os, sys
+sys.setdlopenflags(os.RTLD_GLOBAL | os.RTLD_LAZY)
 import torch
 import numpy as np
 import open3d as o3d

@@ -12,6 +12,7 @@ training_list = [
     os.path.join("refnerf", "coffee"),
     os.path.join("refnerf", "helmet"),
     os.path.join("refnerf", "teapot"),
+    os.path.join("refnerf", "toaster")
     ]
 
 scenes = training_list
@@ -40,45 +41,23 @@ def train_scene(gpu, scene, factor=None):
     dataset_path = os.path.join(project_root, "data", scene)
     print("Dataset Path set to: ", dataset_path)
 
-    # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 train.py -s {dataset_path} -m {os.path.join(output_dir, scene)} --eval --iterations {set_iterations} --white_background"
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
-
-    # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 render.py -m {output_dir}/{scene} --skip_train"
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
+    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 train.py -s {dataset_path} -m {os.path.join(output_dir, scene)} --eval --iterations {set_iterations} --white_background"
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
 
     cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_ply_mesh.py --white_background --model_path {os.path.join(output_dir, scene)} --iteration {set_iterations} --gaussian_ply_only"
     print(cmd)
     if not dry_run:
         os.system(cmd)
-
-    # ## fusion
-    # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_mesh.py -m {os.path.join(output_dir, scene)} --iteration {set_iterations} --texture_mesh"
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
-
-    # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_refgaus_mesh.py --white_background --model_path {os.path.join(output_dir, scene)} --iteration {set_iterations} --marching_tetra_override --texture_mesh"
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
-
-    # #tsdf fusion
-    # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_mesh_tsdf.py -m {os.path.join(output_dir, scene)} --iteration {set_iterations}"
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
-
-    # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 metrics.py -m {output_dir}/{scene}"
-    # print(cmd)
-    # if not dry_run:
-    #     os.system(cmd)
     
-    # evaluation
+    # evaluation + render images
     cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 eval.py --white_background --save_images --model_path {os.path.join(output_dir, scene)}"
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
+
+    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 scripts/debug_renders.py --gt {os.path.join(dataset_path, 'test')} --renders {os.path.join(output_dir, scene, 'test', f'ours_{set_iterations}', 'renders', 'rgb')} --out {os.path.join(output_dir, scene)}"
     print(cmd)
     if not dry_run:
         os.system(cmd)

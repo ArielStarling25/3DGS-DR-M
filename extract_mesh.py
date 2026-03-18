@@ -46,16 +46,30 @@ def get_tetra_points_fallback(gaussians, near=0.02, far=1e6, multiplier=2):
 def evaluate_alpha_3dgs(points, views, gaussians, pipeline, background, kernel_size=None, return_color=False):
     """
     Evaluates alpha at 3D points. 
-    Memory-safe PyTorch version (Double-chunked).
+    Memory-safe PyTorch version with Nearest-Neighbor Color Approximation.
     """
     print("Warning: Using PyTorch approximation for 3D Alpha. Port `integrate` CUDA kernel for speed.")
     
-    chunk_size = 1000 # Reduced query point chunk size
-    gaussian_chunk_size = 100000 # Chunk size for the Gaussians to prevent dense matrix explosion
+    chunk_size = 1000 
+    gaussian_chunk_size = 100000 
     
     final_alpha = torch.zeros((points.shape[0]), dtype=torch.float32, device="cuda")
+    
+    # Track the minimum distance to assign the color of the nearest Gaussian
     if return_color:
         final_color = torch.zeros((points.shape[0], 3), dtype=torch.float32, device="cuda")
+        min_dist_sq_global = torch.full((points.shape[0],), float('inf'), device="cuda")
+        
+        # Get base colors from Spherical Harmonics (DC component)
+        features = gaussians.get_features
+        if len(features.shape) == 3:
+            features_dc = features[:, 0, :] # Extract DC component
+        else:
+            features_dc = features
+            
+        # Standard conversion from SH degree 0 to RGB
+        SH_C0 = 0.28209479177387814
+        base_colors = torch.clamp(features_dc * SH_C0 + 0.5, 0.0, 1.0)
 
     means3D = gaussians.get_xyz
     opacities = gaussians.get_opacity
@@ -64,30 +78,33 @@ def evaluate_alpha_3dgs(points, views, gaussians, pipeline, background, kernel_s
     with torch.no_grad():
         for i in tqdm(range(0, points.shape[0], chunk_size), desc="Evaluating 3D Alpha"):
             pts_chunk = points[i:i+chunk_size]
-            
-            # Accumulator for this chunk of points
             alpha_chunk = torch.zeros((pts_chunk.shape[0]), dtype=torch.float32, device="cuda")
             
-            # Inner loop chunk through the Gaussians
             for j in range(0, means3D.shape[0], gaussian_chunk_size):
                 means_chunk = means3D[j:j+gaussian_chunk_size]
-                cov_chunk = cov3D_precomp[j:j+gaussian_chunk_size, 0] # Simplified scale approximation
+                cov_chunk = cov3D_precomp[j:j+gaussian_chunk_size, 0] 
                 opacities_chunk = opacities[j:j+gaussian_chunk_size]
                 
-                # Safe, smaller distance matrix
                 dist_sq = torch.cdist(pts_chunk, means_chunk, p=2)**2
-                
                 weights = torch.exp(-0.5 * dist_sq / (cov_chunk.unsqueeze(0) + 1e-6))
-                
-                # Accumulate the density contributions
                 alpha_chunk += (weights * opacities_chunk.T).sum(dim=1)
                 
+                if return_color:
+                    # Find the nearest Gaussian in THIS chunk
+                    min_dist_chunk, min_idx_chunk = torch.min(dist_sq, dim=1)
+                    
+                    # Update colors if we found a closer Gaussian than before
+                    current_min_dists = min_dist_sq_global[i:i+chunk_size]
+                    update_mask = min_dist_chunk < current_min_dists
+                    
+                    # Apply updates
+                    min_dist_sq_global[i:i+chunk_size][update_mask] = min_dist_chunk[update_mask]
+                    global_idx = j + min_idx_chunk
+                    final_color[i:i+chunk_size][update_mask] = base_colors[global_idx][update_mask]
+                
             final_alpha[i:i+chunk_size] = torch.clamp(alpha_chunk, max=1.0)
-            
-            # Note: Color approximation omitted here for pure speed/memory safety. 
-            # (Finding the absolute nearest color among all chunks is slow in vanilla PyTorch).
 
-    alpha = 1.0 - final_alpha # Match GOF format (1 = empty, 0 = solid)
+    alpha = 1.0 - final_alpha 
     
     if return_color:
         return alpha, final_color

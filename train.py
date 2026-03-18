@@ -7,6 +7,7 @@ from gaussian_renderer import render, render_env_map
 import sys
 from scene import Scene, GaussianModel
 from utils.general_utils import safe_state
+from utils.depth_utils import depth_to_normal
 import uuid
 import cv2, time
 import numpy as np
@@ -33,7 +34,7 @@ densify -> 30k
 densify_intv in prop -> 100
 '''
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training_ori(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     
@@ -198,6 +199,205 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+        iteration += 1
+
+def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+    first_iter = 0
+    tb_writer = prepare_output_and_logger(dataset)
+    
+    # --- 3DGS-DR Specific Hyperparameters ---
+    INIT_UNITIL_ITER = opt.init_until_iter 
+    FR_OPTIM_FROM_ITER = opt.feature_rest_from_iter
+    NORMAL_PROP_UNTIL_ITER = opt.normal_prop_until_iter + opt.longer_prop_iter 
+    OPAC_LR0_INTERVAL = opt.opac_lr0_interval 
+    DENSIFIDATION_INTERVAL_WHEN_PROP = opt.densification_interval_when_prop 
+    
+    TOT_ITER = opt.iterations + opt.longer_prop_iter + 1
+    DENSIFY_UNTIL_ITER = opt.densify_until_iter + opt.longer_prop_iter
+
+    # --- 3DGS-DR Environment Scope ---
+    USE_ENV_SCOPE = opt.use_env_scope 
+    if USE_ENV_SCOPE:
+        center = [float(c) for c in opt.env_scope_center]
+        ENV_CENTER = torch.tensor(center, device='cuda')
+        ENV_RADIUS = opt.env_scope_radius
+        REFL_MSK_LOSS_W = 0.4
+
+    # --- Initialization ---
+    gaussians = GaussianModel(dataset.sh_degree)
+    scene = Scene(dataset, gaussians) 
+    gaussians.training_setup(opt)
+    if checkpoint:
+        (model_params, first_iter) = torch.load(checkpoint)
+        gaussians.restore(model_params, opt)
+
+    bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
+    background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+
+    iter_start = torch.cuda.Event(enable_timing = True)
+    iter_end = torch.cuda.Event(enable_timing = True)
+
+    viewpoint_stack = None
+    ema_loss_for_log = 0.0
+    progress_bar = tqdm(range(first_iter, TOT_ITER), desc="Training progress")
+    first_iter += 1
+    iteration = first_iter
+
+    print(f'propagation until: {NORMAL_PROP_UNTIL_ITER}')
+    print(f'densify until: {DENSIFY_UNTIL_ITER}')
+    print(f'total iter: {TOT_ITER}')
+
+    initial_stage = True
+
+    while iteration < TOT_ITER:        
+        iter_start.record()
+        gaussians.update_learning_rate(iteration)
+
+        if iteration > FR_OPTIM_FROM_ITER and iteration % 1000 == 0:
+            gaussians.oneupSHdegree()
+        if iteration > INIT_UNITIL_ITER:
+            initial_stage = False
+
+        # Pick a random Camera
+        if not viewpoint_stack:
+            viewpoint_stack = scene.getTrainCameras().copy()
+        viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
+
+        if (iteration - 1) == debug_from:
+            pipe.debug = True
+            
+        # --- RENDER PASS (3DGS-DR) ---
+        render_pkg = render(viewpoint_cam, gaussians, pipe, background, initial_stage=initial_stage)
+        image = render_pkg["render"]
+        viewspace_point_tensor = render_pkg["viewspace_points"]
+        visibility_filter = render_pkg["visibility_filter"]
+        radii = render_pkg["radii"]
+
+        gt_image = viewpoint_cam.original_image.cuda()
+
+        # ==========================================
+        #  GOF GEOMETRY REGULARIZATION (UNMASKED)
+        # ==========================================
+        
+        # Base Color Loss (Standard L1 without spatial weighting)
+        Ll1 = l1_loss(image, gt_image)
+        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+
+        # Depth Distortion & Normal Consistency (Only apply if not in initial stage)
+        if not initial_stage:
+            # Safely fetch GOF parameters (defaulting to 0 if missing from 3DGS-DR arguments)
+            lambda_distortion = getattr(opt, 'lambda_distortion', 0.0) if iteration >= getattr(opt, 'distortion_from_iter', 0) else 0.0
+            lambda_depth_normal = getattr(opt, 'lambda_depth_normal', 0.0) if iteration >= getattr(opt, 'depth_normal_from_iter', 0) else 0.0
+
+            # Distortion Loss (Penalizes Gaussians stretching out along the camera ray)
+            if "distortion_map" in render_pkg and lambda_distortion > 0:
+                distortion_map = render_pkg["distortion_map"]
+                distortion_loss = distortion_map.mean()
+                loss += (distortion_loss * lambda_distortion)
+
+            # Depth-Normal Consistency (Forces rendered normals to match geometry depth)
+            if "depth_map" in render_pkg and "normal_map" in render_pkg and lambda_depth_normal > 0:
+                depth = render_pkg["depth_map"]
+                depth_normal, _ = depth_to_normal(viewpoint_cam, depth[None, ...])
+                depth_normal = depth_normal.permute(2, 0, 1)
+
+                # 3DGS-DR natively outputs normal_map
+                render_normal = render_pkg["normal_map"] 
+                
+                c2w = (viewpoint_cam.world_view_transform.T).inverse()
+                normal2 = c2w[:3, :3] @ render_normal.reshape(3, -1)
+                render_normal_world = normal2.reshape(3, *render_normal.shape[1:])
+                
+                normal_error = 1 - (render_normal_world * depth_normal).sum(dim=0)
+                depth_normal_loss = normal_error.mean()
+                
+                loss += (depth_normal_loss * lambda_depth_normal)
+
+        # ==========================================
+        # END OF GOF INJECTION
+        # ==========================================
+
+        # --- 3DGS-DR Environment Loss ---
+        def get_outside_msk():
+            return None if not USE_ENV_SCOPE else \
+                torch.sum((gaussians.get_xyz - ENV_CENTER[None])**2, dim=-1) > ENV_RADIUS**2
+
+        if USE_ENV_SCOPE and 'refl_strength_map' in render_pkg:
+            refls = gaussians.get_refl
+            refl_msk_loss = refls[get_outside_msk()].mean()
+            loss += REFL_MSK_LOSS_W * refl_msk_loss
+
+        loss.backward()
+        iter_end.record()
+
+        # --- Logging and Densification (Standard 3DGS-DR) ---
+        with torch.no_grad():
+            ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
+            if iteration % 10 == 0:
+                progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}"})
+                progress_bar.update(10)
+            if iteration == TOT_ITER:
+                progress_bar.close()
+
+            # Logging
+            if iteration % 1000 == 0:
+                training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
+            
+            if (iteration in saving_iterations or iteration == TOT_ITER-1):
+                print(f"\n[ITER {iteration}] Saving Gaussians")
+                scene.save(iteration)
+
+            # Densification Logic
+            if iteration < DENSIFY_UNTIL_ITER:
+                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+
+                if iteration <= INIT_UNITIL_ITER:
+                    opacity_reset_intval = 3000
+                    densification_interval = 100
+                elif iteration <= NORMAL_PROP_UNTIL_ITER:
+                    opacity_reset_intval = 3000 
+                    densification_interval = DENSIFIDATION_INTERVAL_WHEN_PROP
+                else:
+                    opacity_reset_intval = 3000
+                    densification_interval = 100
+                
+                if iteration > opt.densify_from_iter and iteration % densification_interval == 0:
+                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+                    gaussians.densify_and_prune(
+                        opt.densify_grad_threshold, 
+                        opt.prune_opacity_threshold, 
+                        scene.cameras_extent, size_threshold, 
+                    )
+
+                HAS_RESET0 = False
+                if iteration % opacity_reset_intval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+                    HAS_RESET0 = True
+                    outside_msk = get_outside_msk()
+                    gaussians.reset_opacity0()
+                    gaussians.reset_refl(exclusive_msk=outside_msk) 
+                    
+                if  OPAC_LR0_INTERVAL > 0 and (INIT_UNITIL_ITER < iteration <= NORMAL_PROP_UNTIL_ITER) and iteration % OPAC_LR0_INTERVAL == 0:
+                    gaussians.set_opacity_lr(opt.opacity_lr)
+                    
+                if  (INIT_UNITIL_ITER < iteration <= NORMAL_PROP_UNTIL_ITER) and iteration % 1000 == 0:
+                    if not HAS_RESET0:
+                        outside_msk = get_outside_msk()
+                        gaussians.reset_opacity1(exclusive_msk=outside_msk)
+                        gaussians.dist_color(exclusive_msk=outside_msk) 
+                        gaussians.reset_scale(exclusive_msk=outside_msk)
+                        if OPAC_LR0_INTERVAL > 0 and iteration != NORMAL_PROP_UNTIL_ITER:
+                            gaussians.set_opacity_lr(0.0)
+
+            # Optimizer step
+            if iteration < TOT_ITER:
+                gaussians.optimizer.step()
+                gaussians.optimizer.zero_grad(set_to_none = True)
+
+            if (iteration in checkpoint_iterations):
+                print(f"\n[ITER {iteration}] Saving Checkpoint")
+                torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+                
         iteration += 1
 
 def prepare_output_and_logger(args):    

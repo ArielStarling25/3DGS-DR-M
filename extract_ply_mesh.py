@@ -15,41 +15,41 @@ from datetime import datetime
 def get_current_timestamp():
     return datetime.now().strftime("%d%m%y_%H%M%S")
 
-def post_process_mesh(mesh, cluster_to_keep=1000):
-    """
-    Post-process a mesh to filter out floaters and disconnected parts
-    """
-    import copy
-    mesh_0 = copy.deepcopy(mesh)
-    with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
-        triangle_clusters, cluster_n_triangles, cluster_area = (mesh_0.cluster_connected_triangles())
+# def post_process_mesh(mesh, cluster_to_keep=1000):
+#     """
+#     Post-process a mesh to filter out floaters and disconnected parts
+#     """
+#     import copy
+#     mesh_0 = copy.deepcopy(mesh)
+#     with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
+#         triangle_clusters, cluster_n_triangles, cluster_area = (mesh_0.cluster_connected_triangles())
     
-    triangle_clusters = np.asarray(triangle_clusters)
-    cluster_n_triangles = np.asarray(cluster_n_triangles)
-    cluster_area = np.asarray(cluster_area)
+#     triangle_clusters = np.asarray(triangle_clusters)
+#     cluster_n_triangles = np.asarray(cluster_n_triangles)
+#     cluster_area = np.asarray(cluster_area)
     
-    # --- FIX: Ensure we don't request more clusters than actually exist ---
-    actual_clusters = len(cluster_n_triangles)
-    print(f"Post processing: Found {actual_clusters} clusters. Filtering...")
+#     # --- FIX: Ensure we don't request more clusters than actually exist ---
+#     actual_clusters = len(cluster_n_triangles)
+#     print(f"Post processing: Found {actual_clusters} clusters. Filtering...")
     
-    if actual_clusters == 0:
-        print("Warning: Mesh has no triangles!")
-        return mesh_0
+#     if actual_clusters == 0:
+#         print("Warning: Mesh has no triangles!")
+#         return mesh_0
         
-    safe_cluster_to_keep = min(cluster_to_keep, actual_clusters)
+#     safe_cluster_to_keep = min(cluster_to_keep, actual_clusters)
     
-    # Find the threshold for the n-th largest cluster
-    n_cluster = np.sort(cluster_n_triangles.copy())[-safe_cluster_to_keep]
-    n_cluster = max(n_cluster, 50) # filter meshes smaller than 50 triangles
+#     # Find the threshold for the n-th largest cluster
+#     n_cluster = np.sort(cluster_n_triangles.copy())[-safe_cluster_to_keep]
+#     n_cluster = max(n_cluster, 50) # filter meshes smaller than 50 triangles
     
-    triangles_to_remove = cluster_n_triangles[triangle_clusters] < n_cluster
-    mesh_0.remove_triangles_by_mask(triangles_to_remove)
-    mesh_0.remove_unreferenced_vertices()
-    mesh_0.remove_degenerate_triangles()
+#     triangles_to_remove = cluster_n_triangles[triangle_clusters] < n_cluster
+#     mesh_0.remove_triangles_by_mask(triangles_to_remove)
+#     mesh_0.remove_unreferenced_vertices()
+#     mesh_0.remove_degenerate_triangles()
     
-    print(f"Num vertices raw: {len(mesh.vertices)}")
-    print(f"Num vertices post: {len(mesh_0.vertices)}")
-    return mesh_0
+#     print(f"Num vertices raw: {len(mesh.vertices)}")
+#     print(f"Num vertices post: {len(mesh_0.vertices)}")
+#     return mesh_0
 
 def extract_ply(dataset: ModelParams, iteration: int):
     with torch.no_grad():

@@ -5,19 +5,19 @@ import time
 from pathlib import Path
 from datetime import datetime
 
-# training_list = [
-#     {"name": "ball", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
-#     {"name": "car", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
-#     {"name": "coffee", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
-#     {"name": "helmet", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
-#     {"name": "teapot", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
-#     {"name": "toaster", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"}
-# ]
+training_list = [
+    {"name": "ball", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
+    {"name": "car", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
+    {"name": "coffee", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
+    {"name": "helmet", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
+    {"name": "teapot", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
+    {"name": "toaster", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"}
+]
 # Testing if the additional parameters really affect the overall quality, if so then thats an issue
 
 training_list = [
-    {"name": "gardenspheres", "group": "ref_real", "factor": 2, "iteration": 61000}, 
-    {"name": "gardenspheres", "group": "ref_real", "factor": 2, "iteration": 61000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.2270 1.9700 1.7740 --env_scope_radius 0.974"},
+    # {"name": "gardenspheres", "group": "ref_real", "factor": 2, "iteration": 61000}, 
+    # {"name": "gardenspheres", "group": "ref_real", "factor": 2, "iteration": 61001, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.2270 1.9700 1.7740 --env_scope_radius 0.974"},
     # {"name": "sedan", "group": "ref_real", "iteration": 61000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.032 0.808 0.751 --env_scope_radius 2.138"},
     # {"name": "toycar", "group": "ref_real", "iteration": 61000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center 0.6810 0.8080 4.4550 --env_scope_radius 2.707"},
 ]
@@ -65,8 +65,14 @@ def train_scene(gpu, scene, factor=None):
         os.system(cmd)
     train_duration = time.perf_counter() - start_train
 
-    # Extract PLY
+    # Extract Splat PLY
     cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_ply_mesh.py --white_background --model_path {output_directory} --iteration {set_iterations} --gaussian_ply_only"
+    print(cmd)
+    if not dry_run:
+        os.system(cmd)
+
+    # Extract Mesh PLY
+    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_mesh.py -m {output_directory} --iteration {set_iterations} --texture_mesh"
     print(cmd)
     start_mesh = time.perf_counter()
     if not dry_run:
@@ -109,7 +115,7 @@ def dispatch_jobs(jobs, executor, excluded_gpus=None):
 
     def report_stats(scene_name, current_stats, final=False):
         # Column widths
-        w_name, w_dur, w_sub, w_time, w_m = 25, 10, 10, 20, 8
+        w_name, w_dur, w_sub, w_time, w_m = 30, 10, 10, 20, 8
         
         # Dynamically set log dir based on the job's 'name'
         group_name = current_stats[0]['group'] if current_stats else "unknown"

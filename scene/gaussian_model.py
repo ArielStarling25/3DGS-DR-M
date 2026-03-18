@@ -178,8 +178,9 @@ class GaussianModel:
         ndir[neg_msk] = -ndir[neg_msk] # make sure normal orient to camera
         return ndir
 
-    #def get_covariance(self, scaling_modifier = 1):
-    #    return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
+    # Why was this commented out?
+    def get_covariance(self, scaling_modifier = 1):
+       return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
 
     def oneupSHdegree(self):
         #self.max_sh_degree = 0

@@ -4,3 +4,4 @@ GPUtil
 kornia==0.7.3
 plyfile
 open3d==0.18.0
+imageio

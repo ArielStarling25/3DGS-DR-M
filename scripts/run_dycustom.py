@@ -5,14 +5,21 @@ import time
 from pathlib import Path
 from datetime import datetime
 
-# 1. Updated training_list to use dictionaries like CODE 2
+# training_list = [
+#     {"name": "ball", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
+#     {"name": "car", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
+#     {"name": "coffee", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
+#     {"name": "helmet", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
+#     {"name": "teapot", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"},
+#     {"name": "toaster", "group": "refnerf", "iteration": 61000, "debug_render": True, "add_params": "--white_background"}
+# ]
+# Testing if the additional parameters really affect the overall quality, if so then thats an issue
+
 training_list = [
-    {"name": "ball", "group": "refnerf", "iteration": 50000},
-    {"name": "car", "group": "refnerf", "iteration": 50000},
-    {"name": "coffee", "group": "refnerf", "iteration": 50000},
-    {"name": "helmet", "group": "refnerf", "iteration": 50000},
-    {"name": "teapot", "group": "refnerf", "iteration": 50000},
-    {"name": "toaster", "group": "refnerf", "iteration": 50000}
+    {"name": "gardenspheres", "group": "ref_real", "factor": 2, "iteration": 61000}, 
+    {"name": "gardenspheres", "group": "ref_real", "factor": 2, "iteration": 61000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.2270 1.9700 1.7740 --env_scope_radius 0.974"},
+    # {"name": "sedan", "group": "ref_real", "iteration": 61000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.032 0.808 0.751 --env_scope_radius 2.138"},
+    # {"name": "toycar", "group": "ref_real", "iteration": 61000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center 0.6810 0.8080 4.4550 --env_scope_radius 2.707"},
 ]
 
 scenes = training_list
@@ -46,7 +53,12 @@ def train_scene(gpu, scene, factor=None):
     mesh_duration = 0.0
 
     # Train
-    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 train.py -s {dataset_path} -m {output_directory} --eval --iterations {set_iterations} --white_background"
+    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 train.py -s {dataset_path} -m {output_directory} --eval --iterations {set_iterations}"
+    if 'factor' in scene:
+        if scene['factor'] > 0:
+            cmd += (" " + f"--images images_{scene['factor']} --resolution {scene['factor']}")
+    if 'add_params' in scene:
+        cmd += (" " + scene['add_params'])
     print(cmd)
     start_train = time.perf_counter()
     if not dry_run:
@@ -68,10 +80,12 @@ def train_scene(gpu, scene, factor=None):
         os.system(cmd)
 
     # Debug renders
-    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 scripts/debug_renders.py --gt {os.path.join(dataset_path, 'test')} --renders {os.path.join(output_directory, 'test', f'ours_{set_iterations}', 'renders', 'rgb')} --out {output_directory}"
-    print(cmd)
-    if not dry_run:
-        os.system(cmd)
+    if 'debug_render' in scene:
+        if scene['debug_render']:
+            cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 scripts/debug_renders.py --gt {os.path.join(dataset_path, 'test')} --renders {os.path.join(output_directory, 'test', f'ours_{set_iterations}', 'renders', 'rgb')} --out {output_directory}"
+            print(cmd)
+            if not dry_run:
+                os.system(cmd)
 
     return {"train_time": train_duration, "mesh_time": mesh_duration}
 
@@ -115,7 +129,6 @@ def dispatch_jobs(jobs, executor, excluded_gpus=None):
         for stat in current_stats:
             iteration = stat.get('iteration', 50000)
             
-            # NOTE: Update 'results.txt' if your eval.py outputs the metric file with a different name
             results_path = os.path.join(output_dir, stat['group'], scene_name, 'metric.txt')
             
             # Helper function to extract CSV metrics: psnr:val,ssim:val,lpips:val,fps:val

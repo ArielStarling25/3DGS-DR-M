@@ -2,7 +2,7 @@ import os
 import re
 import argparse
 from pathlib import Path
-from PIL import Image
+import imageio, cv2
 
 # Easily expandable list of keywords to ignore in the GT directory
 IGNORE_IDENTIFIERS = ['normal', 'alpha', 'disp']
@@ -17,32 +17,25 @@ def extract_number(filename):
     match = re.search(r'\d+', filename.stem)
     return int(match.group()) if match else -1
 
-def create_gif(image_paths, output_path, duration=100):
+def create_gif(image_paths, output_path, fps=24):
     """
-    Loads a list of image paths and saves them as a GIF.
-    Handles transparent PNGs correctly to prevent frame stacking.
+    Reads a sorted list of images and compiles them into a high-quality .gif
+    using imageio and OpenCV.
     """
     if not image_paths:
         print(f"Warning: No images found to create {output_path.name}")
         return
-
-    print(f"Loading {len(image_paths)} images for {output_path.name}...")
-    
-    # Open all images and ensure they are loaded in RGBA mode
-    # so the alpha channel is properly recognized
-    frames = [Image.open(img_path).convert("RGBA") for img_path in image_paths]
-    
-    # Save as GIF
-    print(f"Saving {output_path}...")
-    frames[0].save(
-        output_path,
-        save_all=True,
-        append_images=frames[1:],
-        duration=duration,
-        loop=0,
-        disposal=2
-    )
-    print("Done.\n")
+    print(f"Generating {output_path.name} with {len(image_paths)} frames at {fps} FPS...")
+    with imageio.get_writer(output_path, mode='I', fps=fps, loop=0) as writer:
+        for image_path in image_paths:
+            frame = cv2.imread(str(image_path))
+            if frame is None:
+                print(f"Warning: Could not read {image_path.name}. Skipping.")
+                continue
+            # Convert BGR (OpenCV's default) to RGB (imageio/GIF format)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            writer.append_data(rgb_frame)
+    print(f"Successfully saved to: {output_path}\n")
 
 def generate_comparison_gifs(gt_dir, renders_dir, output_dir):
     gt_dir = Path(gt_dir)
@@ -74,7 +67,7 @@ def generate_comparison_gifs(gt_dir, renders_dir, output_dir):
     else:
         print(f"Error: Renders directory '{renders_dir}' does not exist.")
 
-    # 4. Generate GIFs
+    # Generate GIFs
     create_gif(gt_images, output_dir / 'gt_view.gif')
     create_gif(render_images, output_dir / 'render_view.gif')
     

@@ -19,9 +19,14 @@ WARNED = False
 
 def loadCam(args, id, cam_info, resolution_scale):
     orig_w, orig_h = cam_info.image.size
-
+    HWK = None
     if args.resolution in [1, 2, 4, 8]:
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
+        if cam_info.K is not None:
+            K = cam_info.K.copy()
+            scale = 1.0 / (resolution_scale * args.resolution)
+            K[:2] = K[:2] * scale
+            HWK = (resolution[1], resolution[0], K)
     else:  # should be a type that converts to float
         if args.resolution == -1:
             if False and orig_w > 1600: ###
@@ -38,7 +43,6 @@ def loadCam(args, id, cam_info, resolution_scale):
 
         scale = float(global_down) * float(resolution_scale)
         resolution = (int(orig_w / scale), int(orig_h / scale))
-        HWK = None
         if cam_info.K is not None:
             K = cam_info.K.copy()
             K[:2] = K[:2] * scale

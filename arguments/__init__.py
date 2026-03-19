@@ -78,6 +78,10 @@ class OptimizationParams(ParamGroup):
         self.percent_dense = 0.01
         self.refl_init_value = 1e-3
         self.lambda_dssim = 0.2
+        self.lambda_distortion = 100
+        self.lambda_depth_normal = 0.05
+        self.distortion_from_iter = 15000
+        self.depth_normal_from_iter = 15000
         self.lambda_refl_smooth = 0.4
         self.densification_interval = 100
         self.opacity_reset_interval = 3000

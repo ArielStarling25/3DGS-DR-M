@@ -266,7 +266,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         if (iteration - 1) == debug_from:
             pipe.debug = True
             
-        # --- RENDER PASS (3DGS-DR) ---
+        # RENDER PASS (3DGS-DR)
         render_pkg = render(viewpoint_cam, gaussians, pipe, background, initial_stage=initial_stage)
         image = render_pkg["render"]
         viewspace_point_tensor = render_pkg["viewspace_points"]
@@ -275,17 +275,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         gt_image = viewpoint_cam.original_image.cuda()
 
-        # ==========================================
-        #  GOF GEOMETRY REGULARIZATION (UNMASKED)
-        # ==========================================
+        # === GOF GEOMETRY REGULARISATION INTEGRATION ===
         
-        # Base Color Loss (Standard L1 without spatial weighting)
+        # Base Color Loss
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
 
         # Depth Distortion & Normal Consistency (Only apply if not in initial stage)
         if not initial_stage:
-            # Safely fetch GOF parameters (defaulting to 0 if missing from 3DGS-DR arguments)
+            # Fetch GOF parameters (defaulting to 0 if missing from 3DGS-DR arguments)
             lambda_distortion = getattr(opt, 'lambda_distortion', 0.0) if iteration >= getattr(opt, 'distortion_from_iter', 0) else 0.0
             lambda_depth_normal = getattr(opt, 'lambda_depth_normal', 0.0) if iteration >= getattr(opt, 'depth_normal_from_iter', 0) else 0.0
 
@@ -303,19 +301,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 # 3DGS-DR natively outputs normal_map
                 render_normal = render_pkg["normal_map"] 
-                
                 c2w = (viewpoint_cam.world_view_transform.T).inverse()
                 normal2 = c2w[:3, :3] @ render_normal.reshape(3, -1)
                 render_normal_world = normal2.reshape(3, *render_normal.shape[1:])
-                
                 normal_error = 1 - (render_normal_world * depth_normal).sum(dim=0)
                 depth_normal_loss = normal_error.mean()
                 
                 loss += (depth_normal_loss * lambda_depth_normal)
 
-        # ==========================================
-        # END OF GOF INJECTION
-        # ==========================================
+        # === END OF GOF INTEGRATION ===
 
         # --- 3DGS-DR Environment Loss ---
         def get_outside_msk():

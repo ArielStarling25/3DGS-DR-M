@@ -6,7 +6,7 @@ from tetranerf.utils.extension import cpp
 print('[SUCCESS] All submodules loaded successfully!')
 
 if torch.cuda.is_available():
-    print("[SUCCESS] CUDA is Enabled")
+    print("[SUCCESS] torch CUDA is Enabled")
     # Optionally, print the number of GPUs and their names
     print(f"Number of GPUs available: {torch.cuda.device_count()}")
     print(f"Installed CUDA version: {torch.version.cuda}")

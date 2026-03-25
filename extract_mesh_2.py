@@ -17,6 +17,7 @@ from arguments import ModelParams, PipelineParams, get_combined_args
 
 # Tetranerf / Mesh Utilities
 from tetranerf.utils.extension import cpp
+from trimesh.smoothing import filter_laplacian
 from utils.tetmesh import marching_tetrahedra
 
 def get_current_timestamp():
@@ -25,8 +26,8 @@ def get_current_timestamp():
 @torch.no_grad()
 def extract_mesh_marching_tetrahedra_binary(model_path, name, iteration, gaussians, filter_mesh=True, texture_mesh=True, n_binary_steps=8):
     """
-    Adapted from Ref-Gaussian implementation. 
-    Uses full inverse covariance matrices and bounding grid for accurate evaluation.
+    Adapted from Own Ref-Gaussian ver and Gaussian Opacity Fields implementation
+    Uses full inverse covariance matrices and bounding grid for accurate evaluation
     """
     render_path = os.path.join(model_path, name, f"ours_{iteration}", "fusion")
     makedirs(render_path, exist_ok=True)
@@ -38,11 +39,10 @@ def extract_mesh_marching_tetrahedra_binary(model_path, name, iteration, gaussia
     
     # Calculate scene bounds for the grid
     center = gaussian_points.mean(dim=0)
-    # Estimate a radius that encompasses the scene
     radius = (gaussian_points - center).norm(dim=-1).max().item() * 1.2 
     
     # Create a sparse background grid based on the estimated bounding sphere
-    grid_res = 32
+    grid_res = 32 # 32, 64, 128, 254 depending on how much RAM you have
     x = torch.linspace(-radius, radius, grid_res, device="cuda")
     y, z = x.clone(), x.clone()
     grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing='ij')
@@ -74,7 +74,6 @@ def extract_mesh_marching_tetrahedra_binary(model_path, name, iteration, gaussia
         torch.save(cells, cells_path)
         print("Cells saved.")
 
-    # Prepare Gaussian Covariances and Colors for Volumetric Evaluation
     print("Preparing Gaussian Covariances and Colors for Volumetric Evaluation...")
     
     xyz = gaussians.get_xyz.detach()
@@ -126,10 +125,10 @@ def extract_mesh_marching_tetrahedra_binary(model_path, name, iteration, gaussia
     inv_S[:, 2, 2] = 1.0 / (scales_3d[:, 2] ** 2 + 1e-7)
     
     inv_cov = torch.bmm(torch.bmm(R, inv_S), R.transpose(1, 2))
-    
+
     def evaluate_sdf_and_color(eval_points):
         """
-        Evaluates the 3D volumetric density and weighted color of the Gaussians.
+        Evaluates the 3D volumetric density and weighted color of the Gaussians
         """
         density_threshold = 0.5 
         num_points = eval_points.shape[0]
@@ -138,8 +137,23 @@ def extract_mesh_marching_tetrahedra_binary(model_path, name, iteration, gaussia
         total_density = torch.zeros(num_points, device="cuda")
         total_colors = torch.zeros((num_points, 3), device="cuda")
         
-        chunk_size_pts = 1000  
-        chunk_size_gaussians = 50000 
+        # chunk_size_pts = 1000  
+        # chunk_size_gaussians = 50000 
+        chunk_size_pts = 4000  
+        chunk_size_gaussians = 100000 
+        
+        # --- PRECOMPUTATION PHASE ---
+        # A = inv_cov [M, 3, 3], mu = xyz [M, 3]
+        
+        # Term 3: mu^T A mu  -> Shape: [M]
+        mu_A_mu = torch.einsum('mi,mij,mj->m', xyz, inv_cov, xyz)
+        
+        # Term 2 partial: A * mu -> Shape: [M, 3]
+        V = torch.einsum('mij,mj->mi', inv_cov, xyz)
+        
+        # Term 1 partial: Flattened A -> Shape: [M, 9]
+        A_flat = inv_cov.reshape(M_gaussians, 9)
+        # ----------------------------
         
         for i in tqdm(range(0, num_points, chunk_size_pts), desc="Evaluating SDF", leave=False):
             end_pts = min(i + chunk_size_pts, num_points)
@@ -148,19 +162,36 @@ def extract_mesh_marching_tetrahedra_binary(model_path, name, iteration, gaussia
             density_accumulator = torch.zeros(pts_chunk.shape[0], device="cuda")
             color_accumulator = torch.zeros((pts_chunk.shape[0], 3), device="cuda")
             
+            # --- TERM 1 PREP ---
+            # Precompute flattened x*x^T for the current points chunk -> Shape: [N_chunk, 9]
+            X_xx = torch.einsum('ni,nj->nij', pts_chunk, pts_chunk)
+            X_flat = X_xx.reshape(pts_chunk.shape[0], 9)
+            
             for j in range(0, M_gaussians, chunk_size_gaussians):
                 end_g = min(j + chunk_size_gaussians, M_gaussians)
                 
-                xyz_g = xyz[j:end_g]                 
-                inv_cov_g = inv_cov[j:end_g]         
-                opacity_g = opacity[j:end_g]         
+                opacity_g = opacity[j:end_g]        
                 colors_g = base_colors[j:end_g]      
                 
-                delta = pts_chunk.unsqueeze(1) - xyz_g.unsqueeze(0) 
-                left = torch.matmul(delta.unsqueeze(-2), inv_cov_g.unsqueeze(0)) 
-                dist_sq = torch.matmul(left, delta.unsqueeze(-1)).squeeze(-1).squeeze(-1) 
+                # Slice precomputed variables
+                mu_A_mu_g = mu_A_mu[j:end_g]
+                V_g = V[j:end_g]
+                A_flat_g = A_flat[j:end_g]
                 
-                gauss_density = opacity_g.unsqueeze(0) * torch.exp(-0.5 * dist_sq)
+                # --- PURE MATRIX MULTIPLICATION (cuBLAS) ---
+                # 1. x^T A x  -> Shape: [N_chunk, M_chunk]
+                term1 = torch.matmul(X_flat, A_flat_g.T) 
+                
+                # 2. -2 x^T A mu -> Shape: [N_chunk, M_chunk]
+                term2 = -2.0 * torch.matmul(pts_chunk, V_g.T)
+                
+                # 3. Sum terms. (Broadcasting handles adding the [M_chunk] array)
+                # We use clamp(min=0.0) to prevent floating-point inaccuracies from causing tiny negative distances
+                dist_sq = torch.clamp(term1 + term2 + mu_A_mu_g, min=0.0)
+                
+                # --- ACCUMULATION ---
+                # Broadcasting applies the [M_chunk] opacity across the [N_chunk, M_chunk] tensor
+                gauss_density = opacity_g * torch.exp(-0.5 * dist_sq)
                 
                 density_accumulator += torch.sum(gauss_density, dim=1)
                 color_accumulator += torch.matmul(gauss_density, colors_g)
@@ -168,10 +199,54 @@ def extract_mesh_marching_tetrahedra_binary(model_path, name, iteration, gaussia
             total_density[i:end_pts] = density_accumulator
             total_colors[i:end_pts] = color_accumulator / (density_accumulator.unsqueeze(-1) + 1e-7)
             
-            torch.cuda.empty_cache()
-        
         sdf = density_threshold - total_density 
         return sdf.unsqueeze(-1), total_colors
+    
+    # def evaluate_sdf_and_color(eval_points):
+    #     """
+    #     Evaluates the 3D volumetric density and weighted color of the Gaussians.
+    #     """
+    #     density_threshold = 0.5 
+    #     num_points = eval_points.shape[0]
+    #     M_gaussians = xyz.shape[0]
+        
+    #     total_density = torch.zeros(num_points, device="cuda")
+    #     total_colors = torch.zeros((num_points, 3), device="cuda")
+        
+    #     chunk_size_pts = 1000  
+    #     chunk_size_gaussians = 50000 
+        
+    #     for i in tqdm(range(0, num_points, chunk_size_pts), desc="Evaluating SDF", leave=False):
+    #         end_pts = min(i + chunk_size_pts, num_points)
+    #         pts_chunk = eval_points[i:end_pts] 
+            
+    #         density_accumulator = torch.zeros(pts_chunk.shape[0], device="cuda")
+    #         color_accumulator = torch.zeros((pts_chunk.shape[0], 3), device="cuda")
+            
+    #         for j in range(0, M_gaussians, chunk_size_gaussians):
+    #             end_g = min(j + chunk_size_gaussians, M_gaussians)
+                
+    #             xyz_g = xyz[j:end_g]                 
+    #             inv_cov_g = inv_cov[j:end_g]         
+    #             opacity_g = opacity[j:end_g]         
+    #             colors_g = base_colors[j:end_g]      
+                
+    #             delta = pts_chunk.unsqueeze(1) - xyz_g.unsqueeze(0) 
+    #             left = torch.matmul(delta.unsqueeze(-2), inv_cov_g.unsqueeze(0)) 
+    #             dist_sq = torch.matmul(left, delta.unsqueeze(-1)).squeeze(-1).squeeze(-1) 
+                
+    #             gauss_density = opacity_g.unsqueeze(0) * torch.exp(-0.5 * dist_sq)
+                
+    #             density_accumulator += torch.sum(gauss_density, dim=1)
+    #             color_accumulator += torch.matmul(gauss_density, colors_g)
+            
+    #         total_density[i:end_pts] = density_accumulator
+    #         total_colors[i:end_pts] = color_accumulator / (density_accumulator.unsqueeze(-1) + 1e-7)
+            
+    #         torch.cuda.empty_cache()
+        
+    #     sdf = density_threshold - total_density 
+    #     return sdf.unsqueeze(-1), total_colors
 
     # Initialise Marching Tetrahedra
     print("Evaluating initial SDF...")
@@ -229,6 +304,12 @@ def extract_mesh_marching_tetrahedra_binary(model_path, name, iteration, gaussia
         face_mask = mask[faces].all(axis=1)
         mesh.update_vertices(mask)
         mesh.update_faces(face_mask)
+
+    print("Applying Laplacian smoothing...")
+    # Adjust iterations (e.g., 3 to 5) depending on how smooth you want it
+    mesh.fix_normals()
+    # Smooth the mesh, but explicitly turn OFF volume preservation
+    filter_laplacian(mesh, iterations=3, volume_constraint=False)
 
     out_file = os.path.join(render_path, f"mesh_binary_search_{get_current_timestamp()}.ply")
     mesh.export(out_file)

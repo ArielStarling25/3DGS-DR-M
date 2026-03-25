@@ -74,7 +74,7 @@ class OptimizationParams(ParamGroup):
         self.opacity_lr = 0.05
         self.scaling_lr = 0.005
         self.rotation_lr = 0.001
-        self.envmap_cubemap_lr = 0.05#0.05
+        self.envmap_cubemap_lr = 0.05 #0.05
         self.percent_dense = 0.01
         self.refl_init_value = 1e-3
         self.lambda_dssim = 0.2

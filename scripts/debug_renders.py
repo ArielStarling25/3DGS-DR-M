@@ -5,7 +5,7 @@ from pathlib import Path
 import imageio, cv2
 
 # Easily expandable list of keywords to ignore in the GT directory
-IGNORE_IDENTIFIERS = ['normal', 'alpha', 'disp']
+IGNORE_IDENTIFIERS = ['normal', 'alpha', 'disp', 'depth']
 # Supported image extensions
 VALID_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff'}
 

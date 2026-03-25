@@ -5,19 +5,30 @@ import time
 from pathlib import Path
 from datetime import datetime
 
+# EDIT YOUR TRAINING LIST HERE
 training_list = [
-    {"name": "ball", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
-    {"name": "car", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
-    {"name": "coffee", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
-    # {"name": "helmet", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
-    # {"name": "teapot", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
-    # {"name": "toaster", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
-    {"name": "gardenspheres", "group": "ref_real", "factor": 4, "iteration": 50000, "debug_render": False},
-    {"name": "sedan", "group": "ref_real", "factor": 4, "iteration": 50000, "debug_render": False},
-    {"name": "toycar", "group": "ref_real", "factor": 4, "iteration": 50000, "debug_render": False},
+    # Nerf Synthetic
+    # {"name": "lego", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
+    # {"name": "drums", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
+    # {"name": "ship", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
+    # {"name": "hotdog", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
+    # {"name": "ficus", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
+    # {"name": "mic", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
+    # {"name": "materials", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
+    # # Ref Nerf
+    # {"name": "ball", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
+    # {"name": "car", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
+    # {"name": "coffee", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
+    # Ref Real
+    {"name": "sedan", "group": "ref_real", "factor": 2, "iteration": 61000, "add_iter": 36000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.032 0.808 0.751 --env_scope_radius 2.138"},
+    {"name": "toycar", "group": "ref_real", "factor": 2, "iteration": 61000, "add_iter": 36000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center 0.6810 0.8080 4.4550 --env_scope_radius 2.707"},
+    {"name": "gardenspheres", "group": "ref_real", "factor": 2, "iteration": 61000, "add_iter": 36000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.2270 1.9700 1.7740 --env_scope_radius 0.974"},
+    {"name": "sedan", "group": "ref_real", "factor": 2, "iteration": 61000},
+    {"name": "toycar", "group": "ref_real", "factor": 2, "iteration": 61000},
+    {"name": "gardenspheres", "group": "ref_real", "factor": 2, "iteration": 61000},
 ]
 
-# Testing if the additional parameters really affect the overall quality, if so then thats an issue...
+# Testing if the additional parameters really affect the overall quality, if so then thats an issue for scalability...
 
 # training_list = [
 #     {"name": "gardenspheres", "group": "ref_real", "factor": 4, "iteration": 61000}, 
@@ -45,7 +56,6 @@ def train_scene(gpu, scene, factor=None):
     scripts_dir = current_file_path.parent
     project_root = scripts_dir.parent
     
-    # Construct paths using dictionary values
     dataset_path = os.path.join(project_root, "data", scene['group'], scene['name'])
     output_directory = os.path.join(output_dir, scene['group'], scene['name'])
     set_iterations = scene['iteration']
@@ -69,6 +79,11 @@ def train_scene(gpu, scene, factor=None):
         os.system(cmd)
     train_duration = time.perf_counter() - start_train
 
+    # Handling addtional iterations from additional parameters
+    if 'add_iter' in scene:
+        if scene['add_iter'] > 0:
+            set_iterations += scene['add_iter']
+
     # Extract Splat PLY
     cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_ply_mesh.py --white_background --model_path {output_directory} --iteration {set_iterations} --gaussian_ply_only"
     print(cmd)
@@ -84,8 +99,8 @@ def train_scene(gpu, scene, factor=None):
         os.system(cmd)
     mesh_duration = time.perf_counter() - start_mesh
     
-    # Evaluation + render images
-    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 eval.py --white_background --save_images --model_path {output_directory}"
+    # Evaluation + render (rgb, normal, mesh) images
+    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 eval.py --white_background --save_images --model_path {output_directory} --iteration {set_iterations}"
     print(cmd)
     if not dry_run:
         os.system(cmd)
@@ -148,7 +163,6 @@ def dispatch_jobs(jobs, executor, excluded_gpus=None):
                     try:
                         with open(path, 'r', encoding='utf-8') as f:
                             content = f.read().strip()
-                            # Split by comma to get key:value pairs
                             pairs = content.split(',')
                             m = {}
                             for p in pairs:
@@ -164,7 +178,6 @@ def dispatch_jobs(jobs, executor, excluded_gpus=None):
                         print(f"Error reading {path}: {e}")
                 return "N/A", "N/A", "N/A", "N/A"
 
-            # Fetch metrics
             psnr, ssim, lpips, fps = get_metrics(results_path)
 
             lines.append(f"{str(stat['name']):<{w_name}} | "
@@ -260,7 +273,7 @@ def dispatch_jobs(jobs, executor, excluded_gpus=None):
                 "iteration": scene['iteration']    
             })
             
-            print(f"Job finished. Releasing GPU {gpu}")
+            print(f"Job finished - Releasing GPU {gpu}")
             report_stats(scene_name, completed_jobs_stats_per_scene[scene_name])
 
         time.sleep(5)

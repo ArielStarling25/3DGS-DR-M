@@ -283,7 +283,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Depth Distortion & Normal Consistency (Only apply if not in initial stage)
         if not initial_stage:
-            # Fetch GOF parameters (defaulting to 0 if missing from 3DGS-DR arguments)
             lambda_distortion = getattr(opt, 'lambda_distortion', 0.0) if iteration >= getattr(opt, 'distortion_from_iter', 0) else 0.0
             lambda_depth_normal = getattr(opt, 'lambda_depth_normal', 0.0) if iteration >= getattr(opt, 'depth_normal_from_iter', 0) else 0.0
 
@@ -292,14 +291,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 distortion_map = render_pkg["distortion_map"]
                 distortion_loss = distortion_map.mean()
                 loss += (distortion_loss * lambda_distortion)
-
             # Depth-Normal Consistency (Forces rendered normals to match geometry depth)
             if "depth_map" in render_pkg and "normal_map" in render_pkg and lambda_depth_normal > 0:
                 depth = render_pkg["depth_map"]
                 depth_normal, _ = depth_to_normal(viewpoint_cam, depth[None, ...])
                 depth_normal = depth_normal.permute(2, 0, 1)
 
-                # 3DGS-DR natively outputs normal_map
                 render_normal = render_pkg["normal_map"] 
                 c2w = (viewpoint_cam.world_view_transform.T).inverse()
                 normal2 = c2w[:3, :3] @ render_normal.reshape(3, -1)

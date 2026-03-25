@@ -151,6 +151,7 @@ pip install -e . --no-build-isolation --no-cache-dir
 # Install other dependencies
 cd ../..
 pip install -r requirements.txt
+pip install "git+https://github.com/facebookresearch/pytorch3d.git" --no-build-isolation
 ```
 
 ## Datasets

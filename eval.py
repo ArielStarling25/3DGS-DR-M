@@ -1,7 +1,7 @@
 
 import torch, glob
 from scene import Scene
-import os, time
+import os, time, csv
 import numpy as np
 from tqdm import tqdm
 from os import makedirs
@@ -84,9 +84,36 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     lpip_v = np.array(lpipss).mean()
     fps = 1.0/np.array(render_times).mean()
     print('psnr:{},ssim:{},lpips:{},fps:{}'.format(psnr_v, ssim_v, lpip_v, fps))
-    dump_path = os.path.join(model_path, 'metric.txt')
-    with open(dump_path, 'w') as f:
-        f.write('psnr:{},ssim:{},lpips:{},fps:{}'.format(psnr_v, ssim_v, lpip_v, fps))
+    # dump_path = os.path.join(model_path, 'metric.txt')
+    # with open(dump_path, 'w') as f:
+    #     f.write('psnr:{},ssim:{},lpips:{},fps:{}'.format(psnr_v, ssim_v, lpip_v, fps))
+
+    # Modified CSV Logging Logic
+    dump_path = os.path.join(model_path, 'metric.csv')
+    fieldnames = ['iteration', 'psnr', 'ssim', 'lpips', 'fps']
+    metrics_data = {}
+
+    if os.path.exists(dump_path):
+        with open(dump_path, mode='r', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if 'iteration' in row:
+                    metrics_data[str(row['iteration'])] = row
+                    
+    metrics_data[str(iteration)] = {
+        'iteration': iteration,
+        'psnr': psnr_v,
+        'ssim': ssim_v,
+        'lpips': lpip_v,
+        'fps': fps
+    }
+    
+    with open(dump_path, mode='w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        sorted_keys = sorted(metrics_data.keys(), key=lambda x: int(x) if str(x).isdigit() else x)
+        for key in sorted_keys:
+            writer.writerow(metrics_data[key])
 
 def render_mesh_set(model_path, name, iteration, views, background_color, save_ims=True):
     if save_ims:
@@ -160,7 +187,7 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
         render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background, save_ims)
-        render_mesh_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), background, save_ims) # Mesh Rendering
+        # render_mesh_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), background, save_ims) # Mesh Rendering
 
 if __name__ == "__main__":
     # Set up command line argument parser

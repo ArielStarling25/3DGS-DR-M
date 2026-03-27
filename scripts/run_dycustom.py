@@ -1,14 +1,14 @@
 import os
 import GPUtil
 from concurrent.futures import ThreadPoolExecutor
-import time
+import time, csv
 from pathlib import Path
 from datetime import datetime
 
 # EDIT YOUR TRAINING LIST HERE
 training_list = [
     # Nerf Synthetic
-    # {"name": "lego", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
+    {"name": "lego", "group": "nerf_synthetic", "iteration": 10000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
     # {"name": "drums", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
     # {"name": "ship", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
     # {"name": "hotdog", "group": "nerf_synthetic", "iteration": 50000, "debug_render": True, "add_params": "--white_background --densification_interval_when_prop 100"},
@@ -19,13 +19,15 @@ training_list = [
     # {"name": "ball", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
     # {"name": "car", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
     # {"name": "coffee", "group": "refnerf", "iteration": 50000, "debug_render": True, "add_params": "--white_background"},
+    # Ref Real Testing
+    # {"name": "sedan", "group": "ref_real", "factor": 4, "iteration": 61000, "add_iter": 36000, "add_params": "--opac_lr0_interval 0 --longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.032 0.808 0.751 --env_scope_radius 2.138"},
+    # {"name": "sedan", "group": "ref_real", "factor": 4, "iteration": 61000},
+    # {"name": "sedan", "group": "ref_real", "factor": 4, "iteration": 50000},
+    # {"name": "sedan", "group": "ref_real", "factor": 4, "iteration": 40000},
     # Ref Real
-    {"name": "sedan", "group": "ref_real", "factor": 2, "iteration": 61000, "add_iter": 36000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.032 0.808 0.751 --env_scope_radius 2.138"},
-    {"name": "toycar", "group": "ref_real", "factor": 2, "iteration": 61000, "add_iter": 36000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center 0.6810 0.8080 4.4550 --env_scope_radius 2.707"},
-    {"name": "gardenspheres", "group": "ref_real", "factor": 2, "iteration": 61000, "add_iter": 36000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.2270 1.9700 1.7740 --env_scope_radius 0.974"},
-    {"name": "sedan", "group": "ref_real", "factor": 2, "iteration": 61000},
-    {"name": "toycar", "group": "ref_real", "factor": 2, "iteration": 61000},
-    {"name": "gardenspheres", "group": "ref_real", "factor": 2, "iteration": 61000},
+    # {"name": "sedan", "group": "ref_real", "factor": 4, "iteration": 61000, "add_iter": 36000, "add_params": "--opac_lr0_interval 0 --longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.032 0.808 0.751 --env_scope_radius 2.138"},
+    # {"name": "toycar", "group": "ref_real", "factor": 4, "iteration": 61000, "add_iter": 36000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center 0.6810 0.8080 4.4550 --env_scope_radius 2.707"},
+    # {"name": "gardenspheres", "group": "ref_real", "factor": 4, "iteration": 61000, "add_iter": 36000, "add_params": "--longer_prop_iter 36_000 --use_env_scope --env_scope_center -0.2270 1.9700 1.7740 --env_scope_radius 0.974"},
 ]
 
 # Testing if the additional parameters really affect the overall quality, if so then thats an issue for scalability...
@@ -67,17 +69,17 @@ def train_scene(gpu, scene, factor=None):
     mesh_duration = 0.0
 
     # Train
-    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 train.py -s {dataset_path} -m {output_directory} --eval --iterations {set_iterations}"
-    if 'factor' in scene:
-        if scene['factor'] > 0:
-            cmd += (" " + f"--images images_{scene['factor']} --resolution {scene['factor']}")
-    if 'add_params' in scene:
-        cmd += (" " + scene['add_params'])
-    print(cmd)
-    start_train = time.perf_counter()
-    if not dry_run:
-        os.system(cmd)
-    train_duration = time.perf_counter() - start_train
+    # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 train.py -s {dataset_path} -m {output_directory} --eval --iterations {set_iterations}"
+    # if 'factor' in scene:
+    #     if scene['factor'] > 0:
+    #         cmd += (" " + f"--images images_{scene['factor']} --resolution {scene['factor']}")
+    # if 'add_params' in scene:
+    #     cmd += (" " + scene['add_params'])
+    # print(cmd)
+    # start_train = time.perf_counter()
+    # if not dry_run:
+    #     os.system(cmd)
+    # train_duration = time.perf_counter() - start_train
 
     # Handling addtional iterations from additional parameters
     if 'add_iter' in scene:
@@ -85,14 +87,16 @@ def train_scene(gpu, scene, factor=None):
             set_iterations += scene['add_iter']
 
     # Extract Splat PLY
-    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_ply_mesh.py --white_background --model_path {output_directory} --iteration {set_iterations} --gaussian_ply_only"
-    print(cmd)
-    if not dry_run:
-        os.system(cmd)
+    # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_ply_mesh.py --white_background --model_path {output_directory} --iteration {set_iterations} --gaussian_ply_only"
+    # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_mesh.py --white_background --model_path {output_directory} --iteration {set_iterations} --gaussian_ply_only"
+    # print(cmd)
+    # if not dry_run:
+    #     os.system(cmd)
 
     # Extract Mesh PLY
     # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_mesh.py -m {output_directory} --iteration {set_iterations} --texture_mesh"
-    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_mesh_2.py -m {output_directory} --iteration {set_iterations} --texture_mesh"
+    # cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_mesh_2.py -m {output_directory} --iteration {set_iterations} --texture_mesh"
+    cmd = f"OMP_NUM_THREADS=6 CUDA_VISIBLE_DEVICES={gpu} python3 extract_mesh.py --white_background --model_path {output_directory} --iteration {set_iterations}"
     print(cmd)
     start_mesh = time.perf_counter()
     if not dry_run:
@@ -113,7 +117,7 @@ def train_scene(gpu, scene, factor=None):
             if not dry_run:
                 os.system(cmd)
 
-    return {"train_time": train_duration, "mesh_time": mesh_duration}
+    return {"train_time": train_duration, "mesh_time": mesh_duration, "set_iterations": set_iterations}
 
 def worker(gpu, scene, factor):
     print(f"Starting job on GPU {gpu} with scene {scene['name']}\n")
@@ -135,7 +139,7 @@ def dispatch_jobs(jobs, executor, excluded_gpus=None):
 
     def report_stats(scene_name, current_stats, final=False):
         # Column widths
-        w_name, w_dur, w_sub, w_time, w_m = 30, 10, 10, 20, 8
+        w_name, w_dur, w_sub, w_time, w_m = 40, 10, 10, 20, 8
         
         # Dynamically set log dir based on the job's 'name'
         group_name = current_stats[0]['group'] if current_stats else "unknown"
@@ -155,37 +159,39 @@ def dispatch_jobs(jobs, executor, excluded_gpus=None):
         for stat in current_stats:
             iteration = stat.get('iteration', 50000)
             
-            results_path = os.path.join(output_dir, stat['group'], scene_name, 'metric.txt')
+            results_path = os.path.join(output_dir, stat['group'], scene_name, 'metric.csv')
             
-            # Helper function to extract CSV metrics: psnr:val,ssim:val,lpips:val,fps:val
-            def get_metrics(path):
+            # Helper function updated to parse CSV and match the target iteration
+            def get_metrics(path, target_iter):
                 if os.path.exists(path):
                     try:
-                        with open(path, 'r', encoding='utf-8') as f:
-                            content = f.read().strip()
-                            pairs = content.split(',')
-                            m = {}
-                            for p in pairs:
-                                if ':' in p:
-                                    k, v = p.split(':', 1)
-                                    m[k.strip().lower()] = float(v.strip())
-                            
-                            return (f"{m.get('psnr', 0):.4f}", 
-                                    f"{m.get('ssim', 0):.4f}", 
-                                    f"{m.get('lpips', 0):.4f}", 
-                                    f"{m.get('fps', 0):.2f}")
+                        with open(path, mode='r', encoding='utf-8') as f:
+                            reader = csv.DictReader(f)
+                            for row in reader:
+                                # String conversion ensures safe matching between dict ints and csv strings
+                                if str(row.get('iteration', '')).strip() == str(target_iter).strip():
+                                    psnr_val = float(row.get('psnr', 0))
+                                    ssim_val = float(row.get('ssim', 0))
+                                    lpips_val = float(row.get('lpips', 0))
+                                    fps_val = float(row.get('fps', 0))
+                                    
+                                    return (f"{psnr_val:.4f}", 
+                                            f"{ssim_val:.4f}", 
+                                            f"{lpips_val:.4f}", 
+                                            f"{fps_val:.2f}")
                     except Exception as e:
                         print(f"Error reading {path}: {e}")
                 return "N/A", "N/A", "N/A", "N/A"
 
-            psnr, ssim, lpips, fps = get_metrics(results_path)
+            # Pass the specific iteration to the helper
+            psnr, ssim, lpips, fps = get_metrics(results_path, iteration)
 
             lines.append(f"{str(stat['name']):<{w_name}} | "
-                         f"{stat['duration']:<{w_dur}.2f} | "
+                         f"{stat.get('duration', 0):<{w_dur}.2f} | "
                          f"{stat.get('train_time', 0):<{w_sub}.2f} | "
                          f"{stat.get('mesh_time', 0):<{w_sub}.2f} | "
-                         f"{stat['start']:<{w_time}} | "
-                         f"{stat['end']:<{w_time}} | "
+                         f"{stat.get('start', 'N/A'):<{w_time}} | "
+                         f"{stat.get('end', 'N/A'):<{w_time}} | "
                          f"{psnr:<{w_m}} | {ssim:<{w_m}} | {lpips:<{w_m}} | {fps:<{w_m}}")
             
         lines.append(separator + "\n")
@@ -252,6 +258,7 @@ def dispatch_jobs(jobs, executor, excluded_gpus=None):
                 if isinstance(job_results, dict):
                     train_time = job_results.get("train_time", 0.0)
                     mesh_time = job_results.get("mesh_time", 0.0)
+                    set_iterations = job_results.get("set_iterations", 50000)
             except Exception as exc:
                 print(f"Job {job} generated an exception: {exc}")
             
@@ -260,7 +267,7 @@ def dispatch_jobs(jobs, executor, excluded_gpus=None):
             if scene_name not in completed_jobs_stats_per_scene:
                 completed_jobs_stats_per_scene[scene_name] = []
 
-            job_display_name = f"{scene['group']}_{scene_name}_iter{scene['iteration']}"
+            job_display_name = f"{scene['group']}_{scene_name}_iter{set_iterations}"
 
             completed_jobs_stats_per_scene[scene_name].append({
                 "name": job_display_name,
@@ -270,7 +277,7 @@ def dispatch_jobs(jobs, executor, excluded_gpus=None):
                 "mesh_time": mesh_time,
                 "start": start_dt.strftime(time_fmt),
                 "end": end_dt.strftime(time_fmt),
-                "iteration": scene['iteration']    
+                "iteration": set_iterations    
             })
             
             print(f"Job finished - Releasing GPU {gpu}")

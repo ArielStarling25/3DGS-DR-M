@@ -1,0 +1,25 @@
+/home/arielstarling25/miniconda3/envs/3dgs-dr-50/lib/python3.10/site-packages/cubemapencoder/cubemap_encoder.py:20: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @custom_fwd(cast_inputs=torch.float32)
+/home/arielstarling25/miniconda3/envs/3dgs-dr-50/lib/python3.10/site-packages/cubemapencoder/cubemap_encoder.py:44: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  def backward(ctx, grad_outputs):
+Looking for config file in exp_Custom/nerf_synthetic/lego/cfg_args
+Config file found: exp_Custom/nerf_synthetic/lego/cfg_args
+Loading model from exp_Custom/nerf_synthetic/lego, iteration 10000
+Loaded Gaussian Model
+Loading trained model at iteration 10000
+Found transforms_train.json file, assuming Blender data set!
+Reading Training Transforms
+Reading Test Transforms
+Loading Training Cameras
+Loading Test Cameras
+Loaded Gaussian Scene
+Reconstructing radiance fields from cameras...
+reconstruct radiance fields: 0it [00:00, ?it/s]reconstruct radiance fields: 3it [00:00, 27.72it/s]reconstruct radiance fields: 17it [00:00, 90.64it/s]reconstruct radiance fields: 32it [00:00, 113.58it/s]reconstruct radiance fields: 46it [00:00, 120.46it/s]reconstruct radiance fields: 60it [00:00, 127.10it/s]reconstruct radiance fields: 75it [00:00, 132.79it/s]reconstruct radiance fields: 89it [00:00, 130.08it/s]reconstruct radiance fields: 100it [00:00, 117.32it/s]
+The estimated bounding radius is 4.03
+Use at least 8.06 for depth_trunc
+Extracting bounded mesh using TSDF volume integration...
+Running tsdf volume integration (using stable Tensor VBG) ...
+voxel_size: 0.004
+sdf_trunc: 0.02
+depth_truc: 3
+TSDF integration progress: 0it [00:00, ?it/s]TSDF integration progress: 1it [00:00,  4.01it/s]TSDF integration progress: 3it [00:00,  9.12it/s]TSDF integration progress: 5it [00:00, 10.47it/s]TSDF integration progress: 7it [00:00, 10.72it/s]TSDF integration progress: 9it [00:00, 10.43it/s]TSDF integration progress: 11it [00:01, 11.96it/s]TSDF integration progress: 13it [00:01, 12.72it/s]TSDF integration progress: 15it [00:01, 10.03it/s]TSDF integration progress: 17it [00:01, 10.01it/s]TSDF integration progress: 19it [00:01, 11.17it/s]TSDF integration progress: 21it [00:02, 10.11it/s]TSDF integration progress: 23it [00:02, 10.51it/s]TSDF integration progress: 25it [00:02, 10.48it/s]TSDF integration progress: 27it [00:02,  9.74it/s]TSDF integration progress: 29it [00:02,  9.89it/s]TSDF integration progress: 31it [00:03, 10.25it/s]TSDF integration progress: 33it [00:03, 10.76it/s]TSDF integration progress: 35it [00:03, 10.28it/s]TSDF integration progress: 37it [00:03, 10.42it/s]TSDF integration progress: 39it [00:03, 11.22it/s]TSDF integration progress: 41it [00:03, 11.54it/s]TSDF integration progress: 43it [00:04, 11.80it/s]TSDF integration progress: 45it [00:04, 12.41it/s]TSDF integration progress: 47it [00:04, 11.74it/s]TSDF integration progress: 49it [00:04, 11.15it/s]TSDF integration progress: 51it [00:04, 10.50it/s]TSDF integration progress: 53it [00:05, 10.04it/s]TSDF integration progress: 55it [00:05,  9.83it/s]TSDF integration progress: 57it [00:05, 10.04it/s]TSDF integration progress: 59it [00:05, 10.06it/s]TSDF integration progress: 61it [00:05, 10.10it/s]TSDF integration progress: 63it [00:05, 10.61it/s]TSDF integration progress: 65it [00:06, 10.34it/s]TSDF integration progress: 67it [00:06, 10.81it/s]TSDF integration progress: 69it [00:06, 11.39it/s]TSDF integration progress: 71it [00:06, 12.20it/s]TSDF integration progress: 73it [00:06, 11.49it/s]TSDF integration progress: 75it [00:06, 12.12it/s]TSDF integration progress: 77it [00:07, 12.58it/s]TSDF integration progress: 79it [00:07, 12.90it/s]TSDF integration progress: 82it [00:07, 14.13it/s]TSDF integration progress: 84it [00:07, 15.00it/s]TSDF integration progress: 87it [00:07, 17.59it/s]TSDF integration progress: 91it [00:07, 20.77it/s]TSDF integration progress: 94it [00:07, 22.17it/s]TSDF integration progress: 97it [00:08, 22.60it/s]TSDF integration progress: 100it [00:08, 23.04it/s]TSDF integration progress: 100it [00:08, 12.20it/s]

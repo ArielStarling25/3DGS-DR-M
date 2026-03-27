@@ -14,6 +14,20 @@ if torch.cuda.is_available():
 else:
     print("[FAIL] CUDA is NOT enabled or accessible by PyTorch.")
 
+try:
+    from torch.utils.tensorboard import SummaryWriter
+    print("[SUCCESS] Tensorboard is Enabled")
+except ImportError as e:
+    print("[FAIL] Tensorboard is NOT enabled")
+    print(e)
+
+try:
+    from pytorch3d.io import IO
+    print("[SUCCESS] PyTorch3D is Enabled")
+except ImportError as e:    
+    print("[FAIL] PyTorch3D is NOT enabled")
+    print(e)
+
 import GPUtil
 all_gpus = GPUtil.getGPUs()
 

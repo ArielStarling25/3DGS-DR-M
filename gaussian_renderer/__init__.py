@@ -130,7 +130,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         bg_map = bg_map)
     
     base_color = out_ts[:3,...] # 3,H,W
-    refl_strength = out_ts[6:7,...] #
+    refl_strength = out_ts[6:7,...]
     normal_map = out_ts[3:6,...] 
 
     normal_map = normal_map.permute(1,2,0)
@@ -139,8 +139,29 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     
     final_image = (1-refl_strength) * base_color + refl_strength * refl_color
 
+    # == Depth Data integration ==
+    # Transform world points to camera view space to obtain their Z-depth correctly
+    w2c = viewpoint_camera.world_view_transform
+    viewspace_z = torch.matmul(means3D, w2c[:3, 2:3]) + w2c[3, 2] # Shape [N, 1]
+    
+    # Render depth by tricking the 3-channel rasterizer to render Z-depth as RGB
+    depth_map_3c, _ = rasterizer_c3(
+        means3D = means3D,
+        means2D = means2D,
+        shs = None,
+        colors_precomp = viewspace_z.expand(-1, 3), # Duplicate to satisfy the 3-channel requirement
+        opacities = opacities,
+        scales = scales,
+        rotations = rotations,
+        cov3D_precomp = None,
+        bg_map = torch.zeros(3, imH, imW, device="cuda")
+    )
+    # Take just the first channel as our explicit depth map
+    depth_map = depth_map_3c[0:1, :, :]
+
     results = {
         "render": final_image,
+        "depth_map": depth_map,
         "refl_strength_map": refl_strength,
         'normal_map': normal_map.permute(2,0,1),
         "refl_color_map": refl_color,

@@ -77,6 +77,7 @@ pip install -e . --no-build-isolation --no-cache-dir
 # Install other dependencies
 cd ../..
 pip install -r requirements.txt
+pip install "git+https://github.com/facebookresearch/pytorch3d.git" --no-build-isolation
 ```
 
 ## Installation (Tested with 50-series card)
@@ -106,7 +107,6 @@ conda install -c conda-forge gdb -y
 conda install -c nvidia/label/cuda-12.8.0 cuda-toolkit -y
 conda install -c conda-forge cmake gmp cgal ninja eigen -y
 
-# Export compiler versions
 export CC=gcc-11
 export CXX=g++-11
 export CUDA_HOME=$CONDA_PREFIX
@@ -117,10 +117,10 @@ export LIBRARY_PATH=$CONDA_PREFIX/lib:$CONDA_PREFIX/lib64:$CONDA_PREFIX/lib/stub
 export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$CONDA_PREFIX/lib:$CONDA_PREFIX/lib64:$LD_LIBRARY_PATH
 export LDFLAGS="-L$CONDA_PREFIX/lib -L$CONDA_PREFIX/lib64 -L$CONDA_PREFIX/lib/stubs -L/usr/lib/wsl/lib"
 
-# UPGRADE: Install PyTorch 2.7.1 with cu128 wheels
+# Install PyTorch 2.7.1 with cu128 wheels
 pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128
 
-# Remove previous builds if existent
+# Remove previous builds if already exists
 rm -rf submodules/cubemapencoder/build submodules/cubemapencoder/*.egg-info
 rm -rf submodules/diff-gaussian-rasterization_c3/build submodules/diff-gaussian-rasterization_c3/*.egg-info
 rm -rf submodules/diff-gaussian-rasterization_c7/build submodules/diff-gaussian-rasterization_c7/*.egg-info
